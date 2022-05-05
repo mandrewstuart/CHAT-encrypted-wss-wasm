@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+</head>
+
+<body>
+    <pre id="messages"></pre>
+    <form id="form">
+        <input type="text" id="msg">
+        <input type="submit" value="Send">
+    </form> - <div id="room_name"></div> - <button onclick="chooseRoom()">choose room</button>
+    <script type="module">
+        import init, { encrypt, decrypt } from "/aes_gcm.js";
+        init()
+            .then(() => {
+                window.js_encrypt = (plaintext) => {
+                    const cipher = encrypt(plaintext, data.key, data.nonce);
+                    return cipher.join(',')
+                };
+                window.js_decrypt = (ciphertext) => {
+                    return decrypt(ciphertext, data.key, data.nonce)
+                };
+            })
+    </script>
+    <script>
+        data = {}
+        function sendMessage(message) {
+            data.socket.send(window.js_encrypt(message));
+        }
+        data.name = prompt("What's your name?", "stranger");
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder('utf-8').encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => ('00' + b.toString(16)).slice(-2)).join('');
+            return hashHex;
+        }
+
+        function chooseRoom() {
+            document.getElementById("messages").innerHTML = "";
+            data.room = prompt("What room do you want to enter?", "general");
+            document.getElementById("room_name").innerHTML = data.room;
+            sha256(data.room).then(hash => data.room_hash = hash).then(x => {
+                data.key = data.room_hash.slice(32);
+                data.nonce = data.room_hash.slice(32, 44);
+            }).then(x => {
+                data.socket = new WebSocket("wss://" + window.location.host + "/room/" + data.room);
+            }).then(x => {
+                if (data.set !== true) {
+                    console.log("setting events")
+                    data.set = true;
+                    data.socket.onmessage = function (event) {
+                        var messages = document.getElementById("messages");
+                        messages.append(window.js_decrypt(event.data) + '\n')
+                    };
+                    var form = document.getElementById("form");
+                    form.addEventListener('submit', function (event) {
+                        event.preventDefault();
+                        var input = document.getElementById("msg");
+                        sendMessage(data.name + " said: " + input.value);
+                        input.value = "";
+                    });
+                }
+            })
+        }
+
+        chooseRoom();
+
+    </script>
+</body>
+
+</html>
